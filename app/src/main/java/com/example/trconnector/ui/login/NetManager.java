@@ -48,8 +48,19 @@ public class NetManager {
     private static InetAddress host;
     private static int port;
 
-    private static HostPortPair RedirectTcpHost(HostPortPair old){
-        return null;
+    private static HostPortPair RedirectTcpHost(HostPortPair old)
+    {
+        if (old.addr.equals(dummy) && old.port == 7777)
+        {
+            old.addr = host;
+            old.port = port;
+        }
+        if (old.addr.equals(host) && old.port == port)
+        {
+            old.addr = dummy;
+            old.port = 7777;
+        }
+        return old;
     }
 
     public static void RedirectTcpPacketSource(Packet packet){
