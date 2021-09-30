@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Terraria Connector</string>
+    <!-- Strings related to login -->
+    <string name="prompt_email">Hostname</string>
+    <string name="prompt_password">Port</string>
+    <string name="action_sign_in">Connect To Server</string>
+    <string name="welcome">"Welcome !"</string>
+    <string name="invalid_password">Port must be pure number</string>
+</resources>
