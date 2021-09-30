@@ -1,36 +1,38 @@
 package com.example.trconnector.ui.login;
 
-import android.app.Activity;
-
-import androidx.lifecycle.Observer;
-import androidx.lifecycle.ViewModelProvider;
-
 import android.os.Bundle;
 
-import androidx.annotation.Nullable;
-import androidx.annotation.StringRes;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ProgressBar;
-import android.widget.TextView;
 import android.widget.Toast;
 
+import com.example.trconnector.NetManager;
 import com.example.trconnector.R;
-import com.example.trconnector.ui.login.LoginViewModel;
-import com.example.trconnector.ui.login.LoginViewModelFactory;
 import com.example.trconnector.databinding.ActivityLoginBinding;
 
 public class LoginActivity extends AppCompatActivity {
-
-    private LoginViewModel loginViewModel;
     private ActivityLoginBinding binding;
+    private MutableLiveData<Boolean> connected = new MutableLiveData<>();
+
+    // A placeholder password validation check
+    private boolean isPasswordValid(String password) {
+        try{
+            int port = Integer.parseInt(password);
+            if (port > 0 && port < 65536) return true;
+        } catch (Throwable e){
+
+        }
+        return false;
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -39,44 +41,18 @@ public class LoginActivity extends AppCompatActivity {
         binding = ActivityLoginBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        loginViewModel = new ViewModelProvider(this, new LoginViewModelFactory())
-                .get(LoginViewModel.class);
-
         final EditText usernameEditText = binding.username;
         final EditText passwordEditText = binding.password;
         final Button loginButton = binding.login;
         final ProgressBar loadingProgressBar = binding.loading;
 
-        loginViewModel.getLoginFormState().observe(this, new Observer<LoginFormState>() {
-            @Override
-            public void onChanged(@Nullable LoginFormState loginFormState) {
-                if (loginFormState == null) {
-                    return;
-                }
-                loginButton.setEnabled(loginFormState.isDataValid());
-                if (loginFormState.getPasswordError() != null) {
-                    passwordEditText.setError(getString(loginFormState.getPasswordError()));
-                }
-            }
+        connected.observe(this, b -> {
+            loginButton.setEnabled(false);
+            usernameEditText.setEnabled(false);
+            passwordEditText.setEnabled(false);
+            loadingProgressBar.setVisibility(View.GONE);
+            Toast.makeText(getApplicationContext(), "connected!", Toast.LENGTH_LONG).show();
         });
-
-        loginViewModel.getLoginResult().observe(this, new Observer<LoginResult>() {
-            @Override
-            public void onChanged(@Nullable LoginResult loginResult) {
-                if (loginResult == null) {
-                    return;
-                }
-                loadingProgressBar.setVisibility(View.GONE);
-                if (loginResult.getError() != null) {
-                    showLoginFailed(loginResult.getError());
-                }
-                if (loginResult.getSuccess() != null) {
-                    updateUiWithUser(loginResult.getSuccess());
-                }
-                setResult(Activity.RESULT_OK);
-            }
-        });
-
         TextWatcher afterTextChangedListener = new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -90,49 +66,38 @@ public class LoginActivity extends AppCompatActivity {
 
             @Override
             public void afterTextChanged(Editable s) {
-                loginViewModel.loginDataChanged(usernameEditText.getText().toString(),
-                        passwordEditText.getText().toString());
+                String hostname = usernameEditText.getText().toString();
+                String port = passwordEditText.getText().toString();
+                if (hostname.isEmpty() || port.isEmpty()) return;
+
+                if (!isPasswordValid(port)) {
+                    loginButton.setEnabled(false);
+                    passwordEditText.setError(getString(R.string.invalid_password));
+                } else {
+                    loginButton.setEnabled(true);
+                }
             }
         };
         usernameEditText.addTextChangedListener(afterTextChangedListener);
         passwordEditText.addTextChangedListener(afterTextChangedListener);
-        passwordEditText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-
-            @Override
-            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-                if (actionId == EditorInfo.IME_ACTION_DONE) {
-                    loginViewModel.login();
-                }
-                return false;
+        passwordEditText.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                loginButton.callOnClick();
             }
+            return false;
         });
 
-        loginButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                loadingProgressBar.setVisibility(View.VISIBLE);
-                login(usernameEditText.getText().toString(),
-                        passwordEditText.getText().toString());
-            }
+        loginButton.setOnClickListener(v -> {
+            loadingProgressBar.setVisibility(View.VISIBLE);
+            String hostname = usernameEditText.getText().toString();
+            String port = passwordEditText.getText().toString();
+            if (mgr != null) mgr.stop();
+            mgr = new NetManager();
+            mgr.configure(hostname, port, 7777, () -> {
+                mgr.start(() -> connected.postValue(true));
+            });
         });
     }
 
-    private void login(String hostname, String port)
-    {
-        NetManager.restart(hostname, port, this, new Runnable() {
-            @Override
-            public void run() {
-                loginViewModel.login();
-            }
-        });
-
-    }
-
-    private void updateUiWithUser(LoggedInUserView model) {
-        Toast.makeText(getApplicationContext(), "connected!", Toast.LENGTH_LONG).show();
-    }
-
-    private void showLoginFailed(@StringRes Integer errorString) {
-        Toast.makeText(getApplicationContext(), errorString, Toast.LENGTH_SHORT).show();
-    }
+    private NetManager mgr;
 }
